@@ -3,8 +3,13 @@ package com.sportstournament.controller;
 import com.sportstournament.model.dto.StandingResponseDTO;
 import com.sportstournament.model.dto.TournamentRequestDTO;
 import com.sportstournament.model.entity.Tournament;
+import com.sportstournament.model.enums.TournamentStatus;
 import com.sportstournament.service.TournamentService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,9 +25,12 @@ public class TournamentController {
         this.tournamentService = tournamentService;
     }
 
+    // GET з пагінацією, фільтрацією та сортуванням
     @GetMapping
-    public ResponseEntity<List<Tournament>> getAllTournaments() {
-        List<Tournament> tournaments = tournamentService.getAllTournaments();
+    public ResponseEntity<Page<Tournament>> getAllTournaments(
+            @RequestParam(required = false) TournamentStatus status,
+            @PageableDefault(size = 10, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
+        Page<Tournament> tournaments = tournamentService.getAllTournaments(status, pageable);
         return ResponseEntity.ok(tournaments);
     }
 
@@ -38,9 +46,28 @@ public class TournamentController {
         return ResponseEntity.status(HttpStatus.CREATED).body(tournament);
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<Tournament> updateTournament(@PathVariable Long id,
+                                                       @Valid @RequestBody TournamentRequestDTO request) {
+        Tournament tournament = tournamentService.updateTournament(id, request);
+        return ResponseEntity.ok(tournament);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTournament(@PathVariable Long id) {
+        tournamentService.deleteTournament(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @PostMapping("/{id}/teams/{teamId}")
     public ResponseEntity<Void> addTeamToTournament(@PathVariable Long id, @PathVariable Long teamId) {
         tournamentService.addTeamToTournament(id, teamId);
+        return ResponseEntity.ok().build();
+    }
+
+    @DeleteMapping("/{id}/teams/{teamId}")
+    public ResponseEntity<Void> removeTeamFromTournament(@PathVariable Long id, @PathVariable Long teamId) {
+        tournamentService.removeTeamFromTournament(id, teamId);
         return ResponseEntity.ok().build();
     }
 

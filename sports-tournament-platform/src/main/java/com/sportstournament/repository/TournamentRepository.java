@@ -1,44 +1,26 @@
 package com.sportstournament.repository;
 
 import com.sportstournament.model.entity.Tournament;
+import com.sportstournament.model.enums.TournamentStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
-import java.util.ArrayList;
+
+import java.time.LocalDate;
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
-public class TournamentRepository {
-    private final Map<Long, Tournament> storage = new ConcurrentHashMap<>();
-    private final AtomicLong idGenerator = new AtomicLong(1);
+public interface TournamentRepository extends JpaRepository<Tournament, Long> {
 
-    public Tournament save(Tournament tournament) {
-        if (tournament.getId() == null) {
-            tournament.setId(idGenerator.getAndIncrement());
-        }
-        storage.put(tournament.getId(), tournament);
-        return tournament;
-    }
+    List<Tournament> findByStatus(TournamentStatus status);
 
-    public Optional<Tournament> findById(Long id) {
-        return Optional.ofNullable(storage.get(id));
-    }
+    // Додати цей метод для пагінації за статусом
+    Page<Tournament> findByStatus(TournamentStatus status, Pageable pageable);
 
-    public List<Tournament> findAll() {
-        return new ArrayList<>(storage.values());
-    }
+    List<Tournament> findBySportType(String sportType);
 
-    public void deleteById(Long id) {
-        storage.remove(id);
-    }
+    List<Tournament> findByStartDateAfter(LocalDate date);
 
-    public boolean existsById(Long id) {
-        return storage.containsKey(id);
-    }
-
-    public void clear() {
-        storage.clear();
-    }
+    boolean existsByName(String name);
 }

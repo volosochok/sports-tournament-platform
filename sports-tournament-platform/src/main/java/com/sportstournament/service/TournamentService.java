@@ -11,6 +11,8 @@ import com.sportstournament.model.enums.TournamentStatus;
 import com.sportstournament.repository.MatchRepository;
 import com.sportstournament.repository.TeamRepository;
 import com.sportstournament.repository.TournamentRepository;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,11 +39,13 @@ public class TournamentService {
         this.scoringService = scoringService;
     }
 
-    public List<Tournament> getAllTournaments() {
-        System.out.println("=== getAllTournaments called");
-        List<Tournament> tournaments = tournamentRepository.findAll();
-        System.out.println("Found " + tournaments.size() + " tournaments");
-        return tournaments;
+    public Page<Tournament> getAllTournaments(TournamentStatus status, Pageable pageable) {
+        System.out.println("=== getAllTournaments called with status: " + status + ", pageable: " + pageable);
+
+        if (status != null) {
+            return tournamentRepository.findByStatus(status, pageable);
+        }
+        return tournamentRepository.findAll(pageable);
     }
 
     public Tournament getTournamentById(Long id) {
@@ -77,8 +81,9 @@ public class TournamentService {
             throw new IllegalStateException("Cannot add teams to tournament that is not in PENDING status. Current status: " + tournament.getStatus());
         }
 
-        if (!tournament.getTeamIds().contains(teamId)) {
-            tournament.getTeamIds().add(teamId);
+        // Перевіряємо, чи команда вже додана до турніру (JPA спосіб)
+        if (!tournament.getTeams().contains(team)) {
+            tournament.getTeams().add(team);
             tournamentRepository.save(tournament);
             System.out.println("Team " + teamId + " added to tournament " + tournamentId);
         } else {
@@ -92,32 +97,32 @@ public class TournamentService {
 
         Tournament tournament = getTournamentById(tournamentId);
         System.out.println("Tournament status: " + tournament.getStatus());
-        System.out.println("Teams in tournament: " + tournament.getTeamIds());
+
+        // Отримуємо команди через JPA зв'язок
+        List<Team> teams = tournament.getTeams();
+        System.out.println("Teams in tournament: " + teams.size());
 
         if (tournament.getStatus() != TournamentStatus.PENDING) {
             throw new IllegalStateException("Bracket can only be generated for PENDING tournament. Current status: " + tournament.getStatus());
         }
 
-        if (tournament.getTeamIds() == null || tournament.getTeamIds().size() < 2) {
+        if (teams == null || teams.size() < 2) {
             throw new IllegalStateException("At least 2 teams are required to generate bracket. Current team count: " +
-                    (tournament.getTeamIds() == null ? 0 : tournament.getTeamIds().size()));
+                    (teams == null ? 0 : teams.size()));
         }
 
         // Delete existing bracket if any
         matchRepository.deleteByTournamentId(tournamentId);
         tournament.getBracket().clear();
 
-        // Get teams and generate first round
-        List<Team> teams = teamRepository.findAllByIds(tournament.getTeamIds());
-        System.out.println("Retrieved " + teams.size() + " teams from repository");
-
         int totalRounds = bracketService.calculateTotalRounds(teams.size());
         System.out.println("Tournament will have " + totalRounds + " rounds (including final)");
 
-        List<Match> firstRound = bracketService.generateFirstRound(tournamentId, teams);
+        // Генеруємо перший раунд (передаємо об'єкт Tournament)
+        List<Match> firstRound = bracketService.generateFirstRound(tournament, teams);
         System.out.println("Generated " + firstRound.size() + " first round matches");
 
-        // Save matches
+        // Зберігаємо матчі
         for (Match match : firstRound) {
             matchRepository.save(match);
             tournament.getBracket().add(match);
@@ -137,27 +142,23 @@ public class TournamentService {
             System.out.println("Tournament name: " + tournament.getName());
             System.out.println("Tournament status: " + tournament.getStatus());
 
-            // 2. Get teams
-            List<Long> teamIds = tournament.getTeamIds();
-            System.out.println("Team IDs from tournament: " + teamIds);
-
-            List<Team> teams;
-            if (teamIds == null || teamIds.isEmpty()) {
-                System.out.println("No teams found in tournament");
-                teams = new ArrayList<>();
-            } else {
-                teams = teamRepository.findAllByIds(teamIds);
-                System.out.println("Teams retrieved from repository: " + teams.size());
+            // 2. Get teams through JPA relationship
+            List<Team> teams = tournament.getTeams();
+            System.out.println("Teams in tournament: " + teams.size());
+            if (teams != null) {
                 for (Team team : teams) {
                     System.out.println("  - Team ID: " + team.getId() + ", Name: " + team.getName() + ", Points: " + team.getPoints());
                 }
+            } else {
+                teams = new ArrayList<>();
             }
 
             // 3. Get matches
-            List<Match> matches = matchRepository.findByTournamentId(tournamentId);
+            List<Match> matches = matchRepository.findByTournament_Id(tournamentId);
             System.out.println("Matches retrieved: " + matches.size());
             for (Match match : matches) {
                 System.out.println("  - Match ID: " + match.getId() +
+                        ", Round: " + match.getRound() +
                         ", Team1: " + match.getTeam1Id() +
                         ", Team2: " + match.getTeam2Id() +
                         ", Score: " + match.getTeam1Score() + "-" + match.getTeam2Score() +
@@ -168,7 +169,7 @@ public class TournamentService {
             List<TeamStandingDTO> standings = scoringService.calculateStandings(teams, matches);
             System.out.println("Standings calculated, size: " + standings.size());
 
-            // 5. Sort standings
+            // 5. Sort standings (create mutable list first)
             if (!standings.isEmpty()) {
                 List<TeamStandingDTO> mutableStandings = new ArrayList<>(standings);
                 mutableStandings.sort((a, b) -> {
@@ -223,5 +224,66 @@ public class TournamentService {
         tournament.setStatus(TournamentStatus.FINISHED);
         tournamentRepository.save(tournament);
         System.out.println("Tournament " + tournamentId + " finished");
+    }
+
+    @Transactional
+    public Tournament updateTournament(Long id, TournamentRequestDTO request) {
+        System.out.println("=== updateTournament called for id: " + id);
+
+        Tournament tournament = getTournamentById(id);
+
+        // Перевіряємо, чи турнір не розпочато (не можна змінювати дані після старту)
+        if (tournament.getStatus() != TournamentStatus.PENDING) {
+            throw new IllegalStateException("Cannot update tournament that is not in PENDING status");
+        }
+
+        tournament.setName(request.getName());
+        tournament.setSportType(request.getSportType());
+        tournament.setStartDate(request.getStartDate());
+        tournament.setEndDate(request.getEndDate());
+
+        Tournament updated = tournamentRepository.save(tournament);
+        System.out.println("Tournament " + id + " updated");
+        return updated;
+    }
+
+    @Transactional
+    public void deleteTournament(Long id) {
+        System.out.println("=== deleteTournament called for id: " + id);
+
+        Tournament tournament = getTournamentById(id);
+
+        // Перевіряємо, чи турнір не розпочато
+        if (tournament.getStatus() != TournamentStatus.PENDING) {
+            throw new IllegalStateException("Cannot delete tournament that is not in PENDING status");
+        }
+
+        // Видаляємо всі матчі турніру
+        matchRepository.deleteByTournamentId(id);
+
+        // Видаляємо турнір
+        tournamentRepository.delete(tournament);
+        System.out.println("Tournament " + id + " deleted");
+    }
+
+    @Transactional
+    public void removeTeamFromTournament(Long tournamentId, Long teamId) {
+        System.out.println("=== removeTeamFromTournament called: tournamentId=" + tournamentId + ", teamId=" + teamId);
+
+        Tournament tournament = getTournamentById(tournamentId);
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new ResourceNotFoundException("Team not found with id: " + teamId));
+
+        if (tournament.getStatus() != TournamentStatus.PENDING) {
+            throw new IllegalStateException("Cannot remove teams from tournament that is not in PENDING status");
+        }
+
+        if (tournament.getTeams().contains(team)) {
+            tournament.getTeams().remove(team);
+            tournamentRepository.save(tournament);
+            System.out.println("Team " + teamId + " removed from tournament " + tournamentId);
+        } else {
+            System.out.println("Team " + teamId + " not in tournament " + tournamentId);
+        }
     }
 }

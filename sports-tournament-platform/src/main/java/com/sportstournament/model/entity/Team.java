@@ -1,11 +1,31 @@
 package com.sportstournament.model.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import jakarta.persistence.*;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "teams")
 public class Team {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false, unique = true)
     private String name;
+
     private String city;
+
+    @Column(name = "coach_name")
     private String coachName;
+
     private int points = 0;
+
+    @JsonIgnore
+    @ManyToMany(mappedBy = "teams")
+    private List<Tournament> tournaments = new ArrayList<>();
 
     // Constructors
     public Team() {}
@@ -32,6 +52,9 @@ public class Team {
 
     public int getPoints() { return points; }
     public void setPoints(int points) { this.points = points; }
-    
+
     public void addPoints(int points) { this.points += points; }
+
+    public List<Tournament> getTournaments() { return tournaments; }
+    public void setTournaments(List<Tournament> tournaments) { this.tournaments = tournaments; }
 }

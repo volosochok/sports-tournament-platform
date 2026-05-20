@@ -1,30 +1,51 @@
 package com.sportstournament.model.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.sportstournament.model.enums.MatchStatus;
+import jakarta.persistence.*;
 
+@Entity
+@Table(name = "matches")
 public class Match {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
     private int round;
+
+    @Column(name = "team1_id")
     private Long team1Id;
+
+    @Column(name = "team2_id")
     private Long team2Id;
+
+    @Column(name = "team1_score")
     private Integer team1Score;
+
+    @Column(name = "team2_score")
     private Integer team2Score;
-    private MatchStatus status;
+
+    @Enumerated(EnumType.STRING)
+    private MatchStatus status = MatchStatus.SCHEDULED;
+
+    @Column(name = "winner_id")
     private Long winnerId;
-    private Long tournamentId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "tournament_id", nullable = false)
+    @JsonIgnore
+    private Tournament tournament;
 
     // Constructors
     public Match() {}
 
-    public Match(int round, Long team1Id, Long team2Id, Long tournamentId) {
+    public Match(int round, Long team1Id, Long team2Id, Tournament tournament) {
         this.round = round;
         this.team1Id = team1Id;
         this.team2Id = team2Id;
-        this.tournamentId = tournamentId;
+        this.tournament = tournament;
         this.status = MatchStatus.SCHEDULED;
-        this.team1Score = null;
-        this.team2Score = null;
-        this.winnerId = null;
     }
 
     // Getters and Setters
@@ -52,6 +73,10 @@ public class Match {
     public Long getWinnerId() { return winnerId; }
     public void setWinnerId(Long winnerId) { this.winnerId = winnerId; }
 
-    public Long getTournamentId() { return tournamentId; }
-    public void setTournamentId(Long tournamentId) { this.tournamentId = tournamentId; }
+    public Tournament getTournament() { return tournament; }
+    public void setTournament(Tournament tournament) { this.tournament = tournament; }
+
+    public Long getTournamentId() {
+        return tournament != null ? tournament.getId() : null;
+    }
 }

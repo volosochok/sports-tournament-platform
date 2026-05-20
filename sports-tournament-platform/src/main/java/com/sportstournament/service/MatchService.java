@@ -38,11 +38,11 @@ public class MatchService {
     }
 
     public List<Match> getMatchesByTournament(Long tournamentId) {
-        return matchRepository.findByTournamentId(tournamentId);
+        return matchRepository.findByTournament_Id(tournamentId);
     }
 
     public List<Match> getMatchesByTournamentAndRound(Long tournamentId, int round) {
-        return matchRepository.findByTournamentIdAndRound(tournamentId, round);
+        return matchRepository.findByTournament_IdAndRound(tournamentId, round);
     }
 
     public Match getMatchById(Long id) {
@@ -58,43 +58,45 @@ public class MatchService {
             throw new IllegalStateException("Match is already finished");
         }
 
-        Tournament tournament = tournamentRepository.findById(match.getTournamentId())
-                .orElseThrow(() -> new ResourceNotFoundException("Tournament not found"));
+        // Отримуємо турнір через об'єкт Match (JPA)
+        Tournament tournament = match.getTournament();
+        if (tournament == null) {
+            throw new ResourceNotFoundException("Tournament not found for match");
+        }
 
         if (tournament.getStatus() != TournamentStatus.ONGOING) {
             throw new IllegalStateException("Cannot record result for tournament that is not ONGOING");
         }
 
-        // Update match with result
+        // Оновлюємо матч з результатом
         match.setTeam1Score(result.getTeam1Score());
         match.setTeam2Score(result.getTeam2Score());
         match.setStatus(MatchStatus.FINISHED);
 
-        // Determine winner
+        // Визначаємо переможця
         if (result.getTeam1Score() > result.getTeam2Score()) {
             match.setWinnerId(match.getTeam1Id());
         } else if (result.getTeam2Score() > result.getTeam1Score()) {
             match.setWinnerId(match.getTeam2Id());
         }
-        // If draw, in knockout tournament this shouldn't happen
-        // For simplicity, if draw, team1 wins
+        // Якщо нічия - переможця немає
 
         matchRepository.save(match);
 
         System.out.println("Match " + matchId + " recorded. Winner: " + match.getWinnerId());
 
-        // Check if current round is complete and generate next round
+        // Перевіряємо поточний раунд та генеруємо наступний
         checkAndGenerateNextRound(tournament, match.getRound());
 
-        // Check if tournament is finished
+        // Перевіряємо, чи турнір завершено
         checkAndFinishTournament(tournament);
     }
 
     private void checkAndGenerateNextRound(Tournament tournament, int completedRound) {
-        // Get all matches of the completed round
-        List<Match> currentRoundMatches = matchRepository.findByTournamentIdAndRound(tournament.getId(), completedRound);
+        // Отримуємо всі матчі завершеного раунду
+        List<Match> currentRoundMatches = matchRepository.findByTournament_IdAndRound(tournament.getId(), completedRound);
 
-        // Check if all matches in this round are finished
+        // Перевіряємо, чи всі матчі раунду завершені
         boolean allFinished = currentRoundMatches.stream().allMatch(m -> m.getStatus() == MatchStatus.FINISHED);
 
         if (!allFinished) {
@@ -102,7 +104,7 @@ public class MatchService {
             return;
         }
 
-        // Get winners
+        // Отримуємо переможців
         List<Long> winners = currentRoundMatches.stream()
                 .filter(m -> m.getWinnerId() != null)
                 .map(Match::getWinnerId)
@@ -110,7 +112,7 @@ public class MatchService {
 
         System.out.println("Round " + completedRound + " complete. Winners: " + winners);
 
-        // If only one winner, tournament is over
+        // Якщо тільки один переможець - турнір завершено
         if (winners.size() <= 1) {
             tournament.setStatus(TournamentStatus.FINISHED);
             tournamentRepository.save(tournament);
@@ -118,16 +120,21 @@ public class MatchService {
             return;
         }
 
-        // Generate next round matches
-        List<Match> nextRoundMatches = bracketService.generateNextRound(tournament.getId(), currentRoundMatches, completedRound);
+        // Генеруємо матчі наступного раунду
+        List<Match> nextRoundMatches = bracketService.generateNextRound(tournament, currentRoundMatches, completedRound);
 
         if (nextRoundMatches != null && !nextRoundMatches.isEmpty()) {
             for (Match match : nextRoundMatches) {
-                // Check if this match already exists
-                boolean exists = matchRepository.findByTournamentIdAndRound(tournament.getId(), match.getRound())
+                // Встановлюємо зв'язок з турніром
+                match.setTournament(tournament);
+
+                // Перевіряємо, чи матч вже існує
+                boolean exists = matchRepository.findByTournament_IdAndRound(tournament.getId(), match.getRound())
                         .stream().anyMatch(m ->
-                                (m.getTeam1Id().equals(match.getTeam1Id()) && m.getTeam2Id().equals(match.getTeam2Id())) ||
-                                        (m.getTeam1Id().equals(match.getTeam2Id()) && m.getTeam2Id().equals(match.getTeam1Id()))
+                                (m.getTeam1Id() != null && m.getTeam1Id().equals(match.getTeam1Id()) &&
+                                        m.getTeam2Id() != null && m.getTeam2Id().equals(match.getTeam2Id())) ||
+                                        (m.getTeam1Id() != null && m.getTeam1Id().equals(match.getTeam2Id()) &&
+                                                m.getTeam2Id() != null && m.getTeam2Id().equals(match.getTeam1Id()))
                         );
 
                 if (!exists) {
@@ -138,20 +145,15 @@ public class MatchService {
                 }
             }
             tournamentRepository.save(tournament);
-
-            // CRITICAL FIX: After generating next round, check if we need to continue
-            // If next round has only 1 match (final) and both teams exist, we're good
-            // But if next round creates a match that needs to be played, we wait for results
             System.out.println("Next round (" + (completedRound + 1) + ") created with " + nextRoundMatches.size() + " matches");
         } else if (nextRoundMatches == null && winners.size() > 1) {
-            // If generateNextRound returned null but we have winners, something went wrong
-            // Try to generate manually
+            // Якщо generateNextRound повернув null, але є переможці - створюємо вручну
             System.out.println("WARNING: generateNextRound returned null but we have " + winners.size() + " winners");
             List<Match> manualMatches = new ArrayList<>();
             int nextRound = completedRound + 1;
             for (int i = 0; i < winners.size(); i += 2) {
                 if (i + 1 < winners.size()) {
-                    Match match = new Match(nextRound, winners.get(i), winners.get(i + 1), tournament.getId());
+                    Match match = new Match(nextRound, winners.get(i), winners.get(i + 1), tournament);
                     matchRepository.save(match);
                     tournament.getBracket().add(match);
                     manualMatches.add(match);
@@ -165,22 +167,22 @@ public class MatchService {
     }
 
     private void checkAndFinishTournament(Tournament tournament) {
-        // Get the highest round number
-        List<Match> allMatches = matchRepository.findByTournamentId(tournament.getId());
+        // Отримуємо найвищий номер раунду
+        List<Match> allMatches = matchRepository.findByTournament_Id(tournament.getId());
         int maxRound = allMatches.stream()
                 .mapToInt(Match::getRound)
                 .max()
                 .orElse(0);
 
-        // Check if all matches in the highest round are finished
-        List<Match> finalRoundMatches = matchRepository.findByTournamentIdAndRound(tournament.getId(), maxRound);
+        // Перевіряємо, чи всі матчі найвищого раунду завершені
+        List<Match> finalRoundMatches = matchRepository.findByTournament_IdAndRound(tournament.getId(), maxRound);
         boolean allFinished = finalRoundMatches.stream().allMatch(m -> m.getStatus() == MatchStatus.FINISHED);
 
         if (allFinished && tournament.getStatus() == TournamentStatus.ONGOING) {
             tournament.setStatus(TournamentStatus.FINISHED);
             tournamentRepository.save(tournament);
 
-            // Determine champion
+            // Визначаємо чемпіона
             if (!finalRoundMatches.isEmpty()) {
                 Match finalMatch = finalRoundMatches.get(0);
                 if (finalMatch.getWinnerId() != null) {
@@ -189,5 +191,55 @@ public class MatchService {
                 }
             }
         }
+    }
+
+    @Transactional
+    public Match updateMatch(Long matchId, MatchResultDTO result) {
+        System.out.println("=== updateMatch called for id: " + matchId);
+
+        Match match = getMatchById(matchId);
+
+        if (match.getStatus() == MatchStatus.FINISHED) {
+            // Якщо матч вже завершено, потрібно спочатку відкотити бали
+            throw new IllegalStateException("Cannot update finished match. Please contact administrator.");
+        }
+
+        // Оновлюємо результат
+        match.setTeam1Score(result.getTeam1Score());
+        match.setTeam2Score(result.getTeam2Score());
+        match.setStatus(MatchStatus.FINISHED);
+
+        if (result.getTeam1Score() > result.getTeam2Score()) {
+            match.setWinnerId(match.getTeam1Id());
+        } else if (result.getTeam2Score() > result.getTeam1Score()) {
+            match.setWinnerId(match.getTeam2Id());
+        }
+
+        Match updated = matchRepository.save(match);
+        System.out.println("Match " + matchId + " updated");
+        return updated;
+    }
+
+    @Transactional
+    public void deleteMatch(Long matchId) {
+        System.out.println("=== deleteMatch called for id: " + matchId);
+
+        Match match = getMatchById(matchId);
+        Tournament tournament = match.getTournament();
+
+        // Не можна видаляти матч, який вже зіграний
+        if (match.getStatus() == MatchStatus.FINISHED) {
+            throw new IllegalStateException("Cannot delete finished match");
+        }
+
+        // Якщо турнір вже завершено - не можна видаляти матчі
+        if (tournament.getStatus() == TournamentStatus.FINISHED) {
+            throw new IllegalStateException("Cannot delete match from finished tournament");
+        }
+
+        matchRepository.delete(match);
+        tournament.getBracket().remove(match);
+        tournamentRepository.save(tournament);
+        System.out.println("Match " + matchId + " deleted");
     }
 }

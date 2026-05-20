@@ -1,53 +1,31 @@
 package com.sportstournament.repository;
 
 import com.sportstournament.model.entity.Match;
+import com.sportstournament.model.enums.MatchStatus;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
-import java.util.ArrayList;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.stream.Collectors;
 
 @Repository
-public class MatchRepository {
-    private final Map<Long, Match> storage = new ConcurrentHashMap<>();
-    private final AtomicLong idGenerator = new AtomicLong(1);
+public interface MatchRepository extends JpaRepository<Match, Long> {
 
-    public Match save(Match match) {
-        if (match.getId() == null) {
-            match.setId(idGenerator.getAndIncrement());
-        }
-        storage.put(match.getId(), match);
-        return match;
-    }
+    // Виправлено: findByTournamentId → findByTournament_Id
+    List<Match> findByTournament_Id(Long tournamentId);
 
-    public Optional<Match> findById(Long id) {
-        return Optional.ofNullable(storage.get(id));
-    }
+    // Виправлено: findByTournamentIdAndRound → findByTournament_IdAndRound
+    List<Match> findByTournament_IdAndRound(Long tournamentId, int round);
 
-    public List<Match> findAll() {
-        return new ArrayList<>(storage.values());
-    }
+    List<Match> findByTournament_IdAndStatus(Long tournamentId, MatchStatus status);
 
-    public List<Match> findByTournamentId(Long tournamentId) {
-        return storage.values().stream()
-                .filter(match -> match.getTournamentId().equals(tournamentId))
-                .collect(Collectors.toList());
-    }
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM Match m WHERE m.tournament.id = :tournamentId")
+    void deleteByTournamentId(@Param("tournamentId") Long tournamentId);
 
-    public List<Match> findByTournamentIdAndRound(Long tournamentId, int round) {
-        return storage.values().stream()
-                .filter(match -> match.getTournamentId().equals(tournamentId) && match.getRound() == round)
-                .collect(Collectors.toList());
-    }
-
-    public void deleteById(Long id) {
-        storage.remove(id);
-    }
-
-    public void deleteByTournamentId(Long tournamentId) {
-        storage.values().removeIf(match -> match.getTournamentId().equals(tournamentId));
-    }
+    long countByTournament_IdAndStatus(Long tournamentId, MatchStatus status);
 }

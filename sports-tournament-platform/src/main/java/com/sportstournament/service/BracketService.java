@@ -2,6 +2,7 @@ package com.sportstournament.service;
 
 import com.sportstournament.model.entity.Match;
 import com.sportstournament.model.entity.Team;
+import com.sportstournament.model.entity.Tournament;
 import com.sportstournament.model.enums.MatchStatus;
 import org.springframework.stereotype.Service;
 
@@ -16,7 +17,7 @@ public class BracketService {
      * Generates first round matches for knockout tournament
      * Handles byes (teams that automatically advance)
      */
-    public List<Match> generateFirstRound(Long tournamentId, List<Team> teams) {
+    public List<Match> generateFirstRound(Tournament tournament, List<Team> teams) {
         List<Match> matches = new ArrayList<>();
 
         if (teams == null || teams.size() < 2) {
@@ -32,9 +33,6 @@ public class BracketService {
         int byes = optimalSize - teamCount;
 
         System.out.println("Tournament setup: " + teamCount + " teams, " + byes + " byes");
-
-        // Calculate how many matches in first round
-        int matchesInFirstRound = teamCount / 2;
 
         // If odd number of teams, some get byes
         List<Long> byeTeams = new ArrayList<>();
@@ -57,7 +55,7 @@ public class BracketService {
                         round,
                         teamsToPlay.get(i).getId(),
                         teamsToPlay.get(i + 1).getId(),
-                        tournamentId
+                        tournament
                 );
                 matches.add(match);
                 System.out.println("Created match: Team " + teamsToPlay.get(i).getId() + " vs Team " + teamsToPlay.get(i + 1).getId());
@@ -66,7 +64,7 @@ public class BracketService {
 
         // Create placeholder matches for bye teams (they auto-win)
         for (Long byeTeamId : byeTeams) {
-            Match byeMatch = new Match(round, byeTeamId, null, tournamentId);
+            Match byeMatch = new Match(round, byeTeamId, null, tournament);
             byeMatch.setStatus(MatchStatus.FINISHED);
             byeMatch.setWinnerId(byeTeamId);
             byeMatch.setTeam1Score(1);
@@ -84,7 +82,7 @@ public class BracketService {
     /**
      * Generates next round matches based on winners of current round
      */
-    public List<Match> generateNextRound(Long tournamentId, List<Match> currentRoundMatches, int currentRound) {
+    public List<Match> generateNextRound(Tournament tournament, List<Match> currentRoundMatches, int currentRound) {
         List<Match> nextRoundMatches = new ArrayList<>();
 
         // Get winners from current round
@@ -115,18 +113,14 @@ public class BracketService {
                         nextRound,
                         winners.get(i),
                         winners.get(i + 1),
-                        tournamentId
+                        tournament
                 );
                 nextRoundMatches.add(match);
                 System.out.println("Creating " + getRoundName(nextRound, 0) + " match: Team " + winners.get(i) + " vs Team " + winners.get(i + 1));
             } else if (winners.size() == 2) {
-                // This is the final match - it should be created above
                 System.out.println("Final match created");
             } else if (winners.size() % 2 != 0) {
-                // Odd number of winners - last one gets a bye to next round
                 System.out.println("Odd number of winners (" + winners.size() + ") - last team gets a bye");
-                // Add the last winner as a "bye" for the next round
-                // This team will wait for the winner of the previous match
             }
         }
 

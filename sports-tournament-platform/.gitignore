@@ -31,3 +31,29 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Compiled files
+*.class
+*.jar
+*.war
+
+# IDE files
+.idea/
+.settings/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Application properties (якщо містять паролі)
+application.properties
+
+# Maven
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+release.properties

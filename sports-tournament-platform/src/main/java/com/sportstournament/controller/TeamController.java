@@ -4,11 +4,13 @@ import com.sportstournament.model.dto.TeamRequestDTO;
 import com.sportstournament.model.entity.Team;
 import com.sportstournament.service.TeamService;
 import jakarta.validation.Valid;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/api/teams")
@@ -20,8 +22,10 @@ public class TeamController {
     }
 
     @GetMapping
-    public ResponseEntity<List<Team>> getAllTeams() {
-        List<Team> teams = teamService.getAllTeams();
+    public ResponseEntity<Page<Team>> getAllTeams(
+            @RequestParam(required = false) String city,
+            @PageableDefault(size = 10, sort = "id", direction = Sort.Direction.ASC) Pageable pageable) {
+        Page<Team> teams = teamService.getAllTeams(city, pageable);
         return ResponseEntity.ok(teams);
     }
 
@@ -35,5 +39,18 @@ public class TeamController {
     public ResponseEntity<Team> createTeam(@Valid @RequestBody TeamRequestDTO request) {
         Team team = teamService.createTeam(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(team);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Team> updateTeam(@PathVariable Long id,
+                                           @Valid @RequestBody TeamRequestDTO request) {
+        Team team = teamService.updateTeam(id, request);
+        return ResponseEntity.ok(team);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteTeam(@PathVariable Long id) {
+        teamService.deleteTeam(id);
+        return ResponseEntity.noContent().build();
     }
 }

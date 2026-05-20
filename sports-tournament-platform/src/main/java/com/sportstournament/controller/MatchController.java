@@ -37,9 +37,24 @@ public class MatchController {
     }
 
     @PostMapping("/{id}/result")
-    public ResponseEntity<Void> recordMatchResult(@PathVariable Long id, 
-                                                    @Valid @RequestBody MatchResultDTO result) {
+    public ResponseEntity<Void> recordMatchResult(@PathVariable Long id,
+                                                  @Valid @RequestBody MatchResultDTO result) {
         matchService.recordMatchResult(id, result);
         return ResponseEntity.ok().build();
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Match> updateMatch(@PathVariable Long id,
+                                             @Valid @RequestBody MatchResultDTO result) {
+        System.out.println("=== PUT updateMatch called for id: " + id);
+        Match match = matchService.updateMatch(id, result);
+        return ResponseEntity.ok(match);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteMatch(@PathVariable Long id) {
+        System.out.println("=== DELETE deleteMatch called for id: " + id);
+        matchService.deleteMatch(id);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -1,19 +1,48 @@
 package com.sportstournament.model.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.sportstournament.model.enums.TournamentStatus;
+import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+@Entity
+@Table(name = "tournaments")
 public class Tournament {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(nullable = false)
     private String name;
+
+    @Column(name = "sport_type", nullable = false)
     private String sportType;
+
+    @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
+
+    @Column(name = "end_date", nullable = false)
     private LocalDate endDate;
-    private TournamentStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private TournamentStatus status = TournamentStatus.PENDING;
+
+    @OneToMany(mappedBy = "tournament", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @JsonIgnore
     private List<Match> bracket = new ArrayList<>();
-    private List<Long> teamIds = new ArrayList<>();
+
+    @ManyToMany
+    @JoinTable(
+            name = "tournament_teams",
+            joinColumns = @JoinColumn(name = "tournament_id"),
+            inverseJoinColumns = @JoinColumn(name = "team_id")
+    )
+    @JsonIgnore
+    private List<Team> teams = new ArrayList<>();
 
     // Constructors
     public Tournament() {}
@@ -48,6 +77,6 @@ public class Tournament {
     public List<Match> getBracket() { return bracket; }
     public void setBracket(List<Match> bracket) { this.bracket = bracket; }
 
-    public List<Long> getTeamIds() { return teamIds; }
-    public void setTeamIds(List<Long> teamIds) { this.teamIds = teamIds; }
+    public List<Team> getTeams() { return teams; }
+    public void setTeams(List<Team> teams) { this.teams = teams; }
 }
